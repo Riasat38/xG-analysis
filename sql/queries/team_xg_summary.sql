@@ -24,3 +24,19 @@ JOIN matches m ON sh.match_id  = m.match_id
 JOIN seasons s ON m.season_id  = s.season_id
 GROUP BY t.team_name, s.season_name
 ORDER BY s.season_name, xg_delta DESC;
+
+-- best xG overperformers across all seasons
+SELECT * FROM v_team_season_xg
+ORDER BY xg_delta DESC
+LIMIT 10;
+
+-- worst underperformers
+SELECT * FROM v_team_season_xg
+ORDER BY xg_delta ASC
+LIMIT 10;
+
+-- which team has the highest conversion ratio per season
+SELECT DISTINCT ON (season_name)
+    season_name, team_name, conversion_ratio
+FROM v_team_season_xg
+ORDER BY season_name, conversion_ratio DESC;

@@ -80,3 +80,75 @@ classified AS (
 SELECT * FROM classified
 ORDER BY match_date
 LIMIT 20;
+
+
+-- how many lucky wins per team across all seasons?
+WITH match_xg AS (
+    SELECT
+        sh.match_id,
+        ROUND(SUM(sh.xg_value)
+            FILTER (WHERE sh.team_id = m.home_team_id), 2)  AS home_xg,
+        ROUND(SUM(sh.xg_value)
+            FILTER (WHERE sh.team_id = m.away_team_id), 2)  AS away_xg
+    FROM shots sh
+    JOIN matches m ON sh.match_id = m.match_id
+    GROUP BY sh.match_id, m.home_team_id, m.away_team_id
+),
+verdicts AS (
+    SELECT
+        m.match_id,
+        m.home_team_id,
+        m.away_team_id,
+        CASE
+            WHEN m.home_goals > m.away_goals
+                 AND mx.home_xg < mx.away_xg  THEN m.home_team_id
+            WHEN m.away_goals > m.home_goals
+                 AND mx.away_xg < mx.home_xg  THEN m.away_team_id
+        END                                   AS lucky_winner_id
+    FROM matches m
+    JOIN match_xg mx ON m.match_id = mx.match_id
+)
+SELECT
+    t.team_name,
+    COUNT(*)            AS lucky_wins
+FROM verdicts v
+JOIN teams t ON v.lucky_winner_id = t.team_id
+WHERE v.lucky_winner_id IS NOT NULL
+GROUP BY t.team_name
+ORDER BY lucky_wins DESC
+LIMIT 15;
+
+
+-- verdict distribution across all matches
+WITH match_xg AS (
+    SELECT
+        sh.match_id,
+        ROUND(SUM(sh.xg_value)
+            FILTER (WHERE sh.team_id = m.home_team_id), 2)  AS home_xg,
+        ROUND(SUM(sh.xg_value)
+            FILTER (WHERE sh.team_id = m.away_team_id), 2)  AS away_xg
+    FROM shots sh
+    JOIN matches m ON sh.match_id = m.match_id
+    GROUP BY sh.match_id, m.home_team_id, m.away_team_id
+)
+SELECT
+    CASE
+        WHEN m.home_goals > m.away_goals
+             AND mx.home_xg < mx.away_xg    THEN 'home_lucky_win'
+        WHEN m.away_goals > m.home_goals
+             AND mx.away_xg < mx.home_xg    THEN 'away_lucky_win'
+        WHEN m.home_goals = m.away_goals
+             AND ABS(mx.home_xg - mx.away_xg) > 1
+                                            THEN 'misleading_draw'
+        WHEN m.home_goals > m.away_goals
+             AND mx.home_xg > mx.away_xg    THEN 'deserved_home_win'
+        WHEN m.away_goals > m.home_goals
+             AND mx.away_xg > mx.home_xg    THEN 'deserved_away_win'
+        ELSE                                     'draw_matched_xg'
+    END                                     AS verdict,
+    COUNT(*)                                AS matches,
+    ROUND(COUNT(*)::numeric / 1140 * 100, 1) AS pct
+FROM matches m
+JOIN match_xg mx ON m.match_id = mx.match_id
+GROUP BY verdict
+ORDER BY matches DESC;
